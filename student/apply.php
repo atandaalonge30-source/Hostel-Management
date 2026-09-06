@@ -16,10 +16,10 @@ $student->execute([$sid]);
 $student = $student->fetch();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$existing) {
-    $hostel_id = (int)$_POST['hostel_id'];
+    $hostel_id = (int)($_POST['hostel_id'] ?? 0);
     $room_id = (int)($_POST['room_id'] ?? 0);
     $bunk_number = trim($_POST['bunk_number'] ?? '');
-    $pay_ref = trim($_POST['payment_ref']);
+    $pay_ref = trim($_POST['payment_ref'] ?? '');
 
     // Validate hostel gender match
     $hostel = $pdo->prepare("SELECT * FROM hostels WHERE hostel_id=?");
@@ -36,8 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$existing) {
         $bunk_taken = (bool)$bunk_check->fetchColumn();
     }
 
-    if (!$hostel) {
+    if (!$student) {
+        $err = 'Your student account could not be found. Please log in again.';
+    } elseif (!$hostel) {
         $err = 'Please select a valid hostel.';
+    } elseif ($pay_ref === '') {
+        $err = 'Please enter your payment reference number.';
     } elseif ($hostel['hostel_type'] !== $student['gender'] && $hostel['hostel_type'] !== 'Mixed') {
         $err = 'You cannot apply to a ' . $hostel['hostel_type'] . ' hostel. Please select a hostel that matches your gender.';
     } elseif (!$room) {
@@ -49,17 +53,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$existing) {
     } elseif ($bunk_taken) {
         $err = 'That bunk has just been selected by another student. Please choose another bunk.';
     } else {
-        $pdo->prepare("INSERT INTO applications (student_id, hostel_id, preferred_room_id, preferred_bunk, payment_ref) VALUES (?,?,?,?,?)")
-            ->execute([$sid, $hostel_id, $room_id, $bunk_number, $pay_ref]);
-        // Record payment
-        if ($pay_ref) {
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare("INSERT INTO applications (student_id, hostel_id, preferred_room_id, preferred_bunk, payment_ref) VALUES (?,?,?,?,?)")
+                ->execute([$sid, $hostel_id, $room_id, $bunk_number ?: null, $pay_ref]);
             $pdo->prepare("INSERT INTO payments (student_id, amount, payment_ref) VALUES (?,?,?)")
                 ->execute([$sid, 25000, $pay_ref]);
+            $pdo->commit();
+            $msg = 'Application submitted successfully! The hostel administrator will review your application shortly.';
+            $existing = $pdo->prepare("SELECT * FROM applications WHERE student_id=?");
+            $existing->execute([$sid]);
+            $existing = $existing->fetch();
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $err = 'Your application could not be submitted. Please check your details and try again.';
         }
-        $msg = 'Application submitted successfully! The hostel administrator will review your application shortly.';
-        $existing = $pdo->prepare("SELECT * FROM applications WHERE student_id=?");
-        $existing->execute([$sid]);
-        $existing = $existing->fetch();
     }
 }
 
