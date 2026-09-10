@@ -84,6 +84,7 @@ CREATE TABLE applications (
     preferred_bunk VARCHAR(10) NULL,
     payment_ref VARCHAR(100),
     status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    rejection_reason TEXT NULL,
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
     FOREIGN KEY (hostel_id) REFERENCES hostels(hostel_id) ON DELETE CASCADE,

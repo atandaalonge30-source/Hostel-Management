@@ -4,14 +4,32 @@ if (!isset($_SESSION['admin_id'])) { header('Location: login.php'); exit; }
 require_once '../includes/db.php';
 
 $msg = '';
+$err = '';
 
-if (isset($_GET['approve'])) {
-    $pdo->prepare("UPDATE applications SET status='Approved' WHERE app_id=?")->execute([$_GET['approve']]);
-    $msg = 'Application approved successfully.';
-}
-if (isset($_GET['reject'])) {
-    $pdo->prepare("UPDATE applications SET status='Rejected' WHERE app_id=?")->execute([$_GET['reject']]);
-    $msg = 'Application rejected.';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $app_id = (int)($_POST['app_id'] ?? 0);
+    $action = $_POST['action'] ?? '';
+    $rejection_reason = trim($_POST['rejection_reason'] ?? '');
+
+    if ($app_id < 1 || !in_array($action, ['approve', 'reject'], true)) {
+        $err = 'That application action is not valid. Please try again.';
+    } elseif ($action === 'reject' && $rejection_reason === '') {
+        $err = 'Please provide a reason before rejecting an application.';
+    } else {
+        try {
+            if ($action === 'approve') {
+                $statement = $pdo->prepare("UPDATE applications SET status='Approved', rejection_reason=NULL WHERE app_id=? AND status='Pending'");
+                $statement->execute([$app_id]);
+                $msg = $statement->rowCount() ? 'Application approved successfully.' : 'This application is no longer pending.';
+            } else {
+                $statement = $pdo->prepare("UPDATE applications SET status='Rejected', rejection_reason=? WHERE app_id=? AND status='Pending'");
+                $statement->execute([$rejection_reason, $app_id]);
+                $msg = $statement->rowCount() ? 'Application rejected and the reason was saved.' : 'This application is no longer pending.';
+            }
+        } catch (PDOException $e) {
+            $err = 'The application could not be updated. Please try again.';
+        }
+    }
 }
 
 $apps = $pdo->query("SELECT a.*, s.full_name, s.matric_no, s.department, s.level, s.gender, h.hostel_name, h.hostel_type 
@@ -63,6 +81,7 @@ $apps = $pdo->query("SELECT a.*, s.full_name, s.matric_no, s.department, s.level
     <div class="page-title">Hostel Applications</div>
     <div class="page-subtitle">Review and process student accommodation applications</div>
     <?php if ($msg): ?><div class="alert alert-success"><?= htmlspecialchars($msg) ?></div><?php endif; ?>
+    <?php if ($err): ?><div class="alert alert-error"><?= htmlspecialchars($err) ?></div><?php endif; ?>
 
     <div class="card">
         <div class="card-header"><h3>All Applications (<?= count($apps) ?>)</h3></div>
@@ -95,12 +114,28 @@ $apps = $pdo->query("SELECT a.*, s.full_name, s.matric_no, s.department, s.level
                     </td>
                     <td style="white-space:nowrap;">
                         <?php if ($a['status'] === 'Pending'): ?>
-                            <a href="?approve=<?= $a['app_id'] ?>" class="btn btn-success btn-sm">Approve</a>
-                            <a href="?reject=<?= $a['app_id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Reject this application?')">Reject</a>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="app_id" value="<?= $a['app_id'] ?>">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                            </form>
+                            <details style="display:inline-block;vertical-align:middle;">
+                                <summary class="btn btn-danger btn-sm" style="cursor:pointer;list-style:none;">Reject</summary>
+                                <form method="POST" style="position:absolute;z-index:2;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:12px;width:260px;box-shadow:0 8px 20px rgba(15,23,42,0.15);">
+                                    <input type="hidden" name="app_id" value="<?= $a['app_id'] ?>">
+                                    <input type="hidden" name="action" value="reject">
+                                    <label for="reason-<?= $a['app_id'] ?>" style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:6px;">Reason for rejection</label>
+                                    <textarea id="reason-<?= $a['app_id'] ?>" name="rejection_reason" rows="3" required maxlength="1000" style="width:100%;margin-bottom:8px;" placeholder="Explain what the student needs to correct"></textarea>
+                                    <button type="submit" class="btn btn-danger btn-sm">Confirm rejection</button>
+                                </form>
+                            </details>
                         <?php elseif ($a['status'] === 'Approved'): ?>
                             <a href="allocations.php?student_id=<?= $a['student_id'] ?>" class="btn btn-info btn-sm">Allocate Room</a>
                         <?php else: ?>
                             <span style="color:#94a3b8;font-size:0.8rem;">No action</span>
+                        <?php endif; ?>
+                        <?php if ($a['status'] === 'Rejected' && !empty($a['rejection_reason'])): ?>
+                            <div style="margin-top:6px;color:#991b1b;font-size:0.8rem;white-space:normal;max-width:220px;"><strong>Reason:</strong> <?= htmlspecialchars($a['rejection_reason']) ?></div>
                         <?php endif; ?>
                     </td>
                 </tr>

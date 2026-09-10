@@ -68,7 +68,12 @@ $payment = $payment->fetch();
             ?>
             <?php if ($application['status'] === 'Rejected'): ?>
             <div class="alert alert-error">
-                ❌ Your application has been <strong>rejected</strong>. Please visit the hostel management office for more information or to reapply.
+                ❌ Your application has been <strong>rejected</strong>.
+                <?php if (!empty($application['rejection_reason'])): ?>
+                    <div style="margin-top:8px;"><strong>Reason:</strong> <?= htmlspecialchars($application['rejection_reason']) ?></div>
+                <?php else: ?>
+                    Please visit the hostel management office for more information.
+                <?php endif; ?>
             </div>
             <?php else: ?>
             <div style="display:flex;align-items:center;gap:0;margin-bottom:24px;overflow-x:auto;padding:10px 0;">
